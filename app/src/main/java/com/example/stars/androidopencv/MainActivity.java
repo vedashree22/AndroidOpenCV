@@ -1,5 +1,8 @@
 package com.example.stars.androidopencv;
 
+import android.content.res.AssetManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
@@ -16,10 +19,12 @@ import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.DMatch;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfDMatch;
 import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.Rect;
@@ -27,9 +32,12 @@ import org.opencv.core.Scalar;
 import org.opencv.features2d.DescriptorExtractor;
 import org.opencv.features2d.DescriptorMatcher;
 import org.opencv.features2d.FeatureDetector;
+import org.opencv.features2d.Features2d;
 import org.opencv.imgproc.Imgproc;
 
-import java.util.List;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.LinkedList;
 
 public class MainActivity extends AppCompatActivity implements OnTouchListener, CvCameraViewListener2 {
 
@@ -65,7 +73,6 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
             }
         }
     };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -155,15 +162,6 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
                 (int) mBlobColorRgba.val[1],
                 (int) mBlobColorRgba.val[2]));
 
-        mRef = mRgba;
-        //http://answers.opencv.org/question/12265/how-to-display-a-mat-in-imageview/
-        //Bitmap img = Bitmap.createBitmap(mRef.cols(), mRef.rows(), Bitmap.Config.ARGB_8888);
-        //Utils.matToBitmap(mRef, img);
-        //show_image.setImageBitmap(img);
-        detector.detect(mRef, keypoints1);
-        descriptor.compute(mRef, keypoints1, descriptor1);
-
-
         return false;
     }
 
@@ -184,11 +182,32 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         descriptor2 = new Mat();
         keypoints1 = new MatOfKeyPoint();
         keypoints2 = new MatOfKeyPoint();
-        detector = FeatureDetector.create(FeatureDetector.ORB);
-        descriptor = DescriptorExtractor.create(DescriptorExtractor.ORB);
-        matcher = DescriptorMatcher.create(DescriptorMatcher.FLANNBASED);
         mBlobColorRgba = new Scalar(255);
         mBlobColorHsv = new Scalar(255);
+        try {
+            init();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void init() throws IOException {
+
+        detector = FeatureDetector.create(FeatureDetector.ORB);
+        descriptor = DescriptorExtractor.create(DescriptorExtractor.ORB);
+        matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
+
+
+        AssetManager assetManager = getAssets();
+        InputStream input_stream;
+        input_stream = assetManager.open("image2.jpg");
+        Bitmap bit = BitmapFactory.decodeStream(input_stream);
+        Utils.bitmapToMat(bit, mRef);
+        Imgproc.cvtColor(mRef, mRef, Imgproc.COLOR_RGB2GRAY);
+        mRef.convertTo(mRef, 0);
+        detector.detect(mRef, keypoints1);
+        descriptor.compute(mRef, keypoints1, descriptor1);
+
     }
 
     @Override
@@ -196,31 +215,75 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         mRgba.release();
     }
 
-    public Mat orb1(Mat inputRgb) {
+    public Mat orb1() {
+        Mat inputRgb = new Mat();
+        mRgba.copyTo(inputRgb);
+
+        double min_dist = 100.0;
+        double max_dist = 0.0;
+        double dist;
+
+        Imgproc.cvtColor(inputRgb, inputRgb, Imgproc.COLOR_RGB2GRAY);
+        inputRgb.convertTo(inputRgb, 0);
         detector.detect(inputRgb, keypoints2);
         descriptor.compute(inputRgb, keypoints2, descriptor2);
-        //Features2d.drawKeypoints(inputRgb, keypoints1, inputRgb, new Scalar(255,255,255),3);
+        Features2d.drawKeypoints(inputRgb, keypoints2, inputRgb, new Scalar(255, 255, 255), 3);
 
-        MatOfDMatch matches = new MatOfDMatch();
-        matcher.match(descriptor1, descriptor2, matches);
+        if (descriptor2.empty())
+            return mRgba;
 
-        List<DMatch> matchpairs = matches.toList();
-        return inputRgb;
+        MatOfDMatch match_pairs = new MatOfDMatch();
+        if (mRef.type() == inputRgb.type())
+            matcher.match(descriptor1, descriptor2, match_pairs);
+        else
+            return mRgba;
+
+        for (int i = 0; i < match_pairs.toList().size(); i++) {
+            dist = (double) match_pairs.toList().get(i).distance;
+            if (dist < min_dist)
+                min_dist = dist;
+            if (dist > max_dist)
+                max_dist = dist;
+        }
+
+        LinkedList<DMatch> good_matches = new LinkedList();
+        for (int i = 0; i < match_pairs.toList().size(); i++) {
+            if (match_pairs.toList().get(i).distance <= (1.5 * min_dist))
+                good_matches.addLast(match_pairs.toList().get(i));
+        }
+
+        MatOfDMatch good_match = new MatOfDMatch();
+        good_match.fromList(good_matches);
+
+        Mat outputRgb = new Mat();
+        MatOfByte draw_match = new MatOfByte();
+
+        Features2d.drawMatches(mRef, keypoints1, inputRgb, keypoints2, good_match, outputRgb,
+                new Scalar(255, 0, 0), new Scalar(0, 255, 0), draw_match, Features2d.NOT_DRAW_SINGLE_POINTS);
+
+        Imgproc.resize(outputRgb, outputRgb, inputRgb.size());
+        return outputRgb;
     }
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         mRgba = inputFrame.rgba();
-        return orb1(mRgba);
+        return orb1();
     }
+
 
     @Override
     public void onStart() {
         super.onStart();
+
     }
 
     @Override
     public void onStop() {
         super.onStop();
+
     }
+
+
 }
+
