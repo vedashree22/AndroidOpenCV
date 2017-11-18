@@ -1,10 +1,14 @@
 package com.example.stars.androidopencv;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
@@ -39,20 +43,21 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedList;
 
-public class MainActivity extends AppCompatActivity implements OnTouchListener, CvCameraViewListener2 {
+import static org.opencv.features2d.Features2d.DRAW_RICH_KEYPOINTS;
 
+public class MainActivity extends AppCompatActivity implements OnTouchListener, CvCameraViewListener2 {
+    private static final int REQUEST_CODE = 100;
     double x = -1;
     double y = -1;
     TextView touch_coordinates;
     TextView touch_color;
-    ImageView show_image;
     FeatureDetector detector;
     DescriptorExtractor descriptor;
     DescriptorMatcher matcher;
     Mat descriptor1, descriptor2;
     MatOfKeyPoint keypoints1, keypoints2;
     private CameraBridgeViewBase mOpenCvCameraView;
-    private Mat mRgba, mGray, mRef;
+    private Mat mRgba, mRef;
     private Scalar mBlobColorRgba;
     private Scalar mBlobColorHsv;
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
@@ -60,7 +65,6 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         public void onManagerConnected(int status) {
             switch (status) {
                 case LoaderCallbackInterface.SUCCESS: {
-                    //Log.i(TAG, "OpenCV loaded successfully");
                     mOpenCvCameraView.enableView();
                     mOpenCvCameraView.setOnTouchListener(MainActivity.this);
 
@@ -78,13 +82,16 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        //https://stackoverflow.com/questions/38552144/how-get-permission-for-camera-in-android-specifically-marshmallow
+        if (ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CODE);
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.opencv_tutorial_activity_surface_view);
         touch_coordinates = (TextView) findViewById(R.id.touch_coordinates);
         touch_color = (TextView) findViewById(R.id.touch_color);
-        //show_image = (ImageView) findViewById(R.id.show_image);
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
-        // mOpenCvCameraView.setRotation(90);
         mOpenCvCameraView.setCvCameraViewListener(this);
     }
 
@@ -177,7 +184,6 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
     public void onCameraViewStarted(int width, int height) {
         mRgba = new Mat();
         mRef = new Mat();
-        mGray = new Mat();
         descriptor1 = new Mat();
         descriptor2 = new Mat();
         keypoints1 = new MatOfKeyPoint();
@@ -238,12 +244,13 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         else
             return mRgba;
 
+
         for (int i = 0; i < match_pairs.toList().size(); i++) {
             dist = (double) match_pairs.toList().get(i).distance;
             if (dist < min_dist)
                 min_dist = dist;
-            if (dist > max_dist)
-                max_dist = dist;
+           // if (dist > max_dist)
+             //   max_dist = dist;
         }
 
         LinkedList<DMatch> good_matches = new LinkedList();
@@ -259,7 +266,7 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         MatOfByte draw_match = new MatOfByte();
 
         Features2d.drawMatches(mRef, keypoints1, inputRgb, keypoints2, good_match, outputRgb,
-                new Scalar(255, 0, 0), new Scalar(0, 255, 0), draw_match, Features2d.NOT_DRAW_SINGLE_POINTS);
+                new Scalar(255, 0, 0), new Scalar(0, 255, 0), draw_match, DRAW_RICH_KEYPOINTS);
 
         Imgproc.resize(outputRgb, outputRgb, inputRgb.size());
         return outputRgb;
