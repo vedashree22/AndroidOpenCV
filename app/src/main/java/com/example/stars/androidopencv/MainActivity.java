@@ -15,7 +15,6 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.View.OnTouchListener;
 import android.view.WindowManager;
-import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -47,8 +46,6 @@ import static org.opencv.features2d.Features2d.DRAW_RICH_KEYPOINTS;
 
 public class MainActivity extends AppCompatActivity implements OnTouchListener, CvCameraViewListener2 {
     private static final int REQUEST_CODE = 100;
-    double x = -1;
-    double y = -1;
     TextView touch_coordinates;
     TextView touch_color;
     FeatureDetector detector;
@@ -121,6 +118,7 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
 
     @Override
     public boolean onTouch(View v, MotionEvent event) {
+        double x, y;
 
         int cols = mRgba.cols();
         int rows = mRgba.rows();
@@ -165,6 +163,7 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         touch_color.setTextColor(Color.rgb((int) mBlobColorRgba.val[0],
                 (int) mBlobColorRgba.val[1],
                 (int) mBlobColorRgba.val[2]));
+
         touch_coordinates.setTextColor(Color.rgb((int) mBlobColorRgba.val[0],
                 (int) mBlobColorRgba.val[1],
                 (int) mBlobColorRgba.val[2]));
@@ -221,43 +220,51 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         mRgba.release();
     }
 
-    public Mat orb1() {
+    public Mat matchKeypoints() {
+        //Make a copy of the the input frame
         Mat inputRgb = new Mat();
         mRgba.copyTo(inputRgb);
 
         double min_dist = 100.0;
-        double max_dist = 0.0;
+        // double max_dist = 0.0;
         double dist;
 
+        //convert the image to grayscale and set the depth value to 0
         Imgproc.cvtColor(inputRgb, inputRgb, Imgproc.COLOR_RGB2GRAY);
-        inputRgb.convertTo(inputRgb, 0);
+        inputRgb.convertTo ( inputRgb, 0 );
+
+        //detect keypoints and descriptors
         detector.detect(inputRgb, keypoints2);
         descriptor.compute(inputRgb, keypoints2, descriptor2);
-        Features2d.drawKeypoints(inputRgb, keypoints2, inputRgb, new Scalar(255, 255, 255), 3);
+        //Features2d.drawKeypoints(inputRgb, keypoints2, inputRgb, new Scalar(255, 255, 255), 3);
 
+        //If there is no descriptors in the current frame(say a blank screen), just return the same
+        // frame
         if (descriptor2.empty())
             return mRgba;
 
+        //Match the two descriptors using BRUTEFORCE_HAMMING algorithm
         MatOfDMatch match_pairs = new MatOfDMatch();
         if (mRef.type() == inputRgb.type())
             matcher.match(descriptor1, descriptor2, match_pairs);
         else
             return mRgba;
 
-
+        //distance is the score of similarity between two descriptors vectors being matched
+        //we calculate the min_dist for all the match pairs and save it in min_dist
         for (int i = 0; i < match_pairs.toList().size(); i++) {
             dist = (double) match_pairs.toList().get(i).distance;
             if (dist < min_dist)
                 min_dist = dist;
-           // if (dist > max_dist)
-             //   max_dist = dist;
+            // if (dist > max_dist)
+            //   max_dist = dist;
         }
 
+        //then  we create a list of good_matches whose distance would fall within our threshold
         LinkedList<DMatch> good_matches = new LinkedList();
-        for (int i = 0; i < match_pairs.toList().size(); i++) {
-            if (match_pairs.toList().get(i).distance <= (1.5 * min_dist))
-                good_matches.addLast(match_pairs.toList().get(i));
-        }
+        for (int i = 0; i < match_pairs.toList().size(); i++)
+            if (match_pairs.toList ().get ( i ).distance <= (1.5 * min_dist))
+                good_matches.addLast ( match_pairs.toList ().get ( i ) );
 
         MatOfDMatch good_match = new MatOfDMatch();
         good_match.fromList(good_matches);
@@ -275,7 +282,7 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         mRgba = inputFrame.rgba();
-        return orb1();
+        return matchKeypoints();
     }
 
 
@@ -290,7 +297,5 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener, 
         super.onStop();
 
     }
-
-
 }
 
